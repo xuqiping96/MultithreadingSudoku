@@ -1,4 +1,3 @@
-//头文件
 #include <assert.h>
 #include <pthread.h>
 #include <stdbool.h>
@@ -6,7 +5,10 @@
 #include <stdlib.h>
 #include <math.h>
 
+#define MAX_LINE_LEN 256
+
 //结构体
+//先验证谜题是否完成（是否有0），再验证是否有效（结果是否正确）
 typedef struct
 {
   pthread_t tid;
@@ -64,6 +66,14 @@ bool rowValid(int psize, int **grid)
 bool rowComplete(int psize, int **grid)
 {
   bool flag = true;
+
+  for(int column = 1; column <= psize; column++) {
+    if((*grid)[column] == 0) {
+      flag = false;
+      return flag;
+    }
+  }
+
   return flag;
 }
 
@@ -81,9 +91,20 @@ bool columnValid(int psize, int **grid)
 }
 
 //列是否完成
+//传入&&grid[1][i]，i为第i列，即第i个列的线程
 bool columnComplete(int psize, int **grid)
 {
   bool flag = true;
+  int **column_data = grid;
+
+  for(int i = 1; i <= psize; i++) {
+    if(**column_data == 0) {
+      flag = false;
+      return flag;
+    }
+    column_data++;
+  }
+
   return flag;
 }
 
@@ -118,17 +139,52 @@ void checkSudoku(int psize, int **grid, bool *complete, bool *valid)
 int readSudoku(char *filename, int ***grid)
 {
   int psize;
+  FILE *fp_in;
+  char *read_line;
+
+  if((fp_in = fopen(filename, "r")) == NULL) {
+    fprintf(stderr, "Failed to open %s.\n", filename);
+    exit(EXIT_FAILURE);
+  }
+  fgets(read_line, MAX_LINE_LEN, fp_in);
+  psize = atoi(strtok(read_line, "\n"));
+
+  *grid = (int **)calloc(psize + 1, sizeof(int *));
+  for(int i = 0; i < psize + 1; i++) {
+    (*grid)[i] = (int *)calloc(psize + 1, sizeof(int));
+  }
+
+  for(int i = 1; i <= psize; i++) {
+    fgets(read_line, MAX_LINE_LEN, fp_in);
+    (*grid)[i][1] = atoi(strtok(read_line, " \n"));
+    for(int j = 2; j <= psize; j++) {
+      (*grid)[i][j] = atoi(strtok(NULL, " \n"));
+    }
+  }
+
+  fclose(fp_in);
+
   return psize;
 }
 
 //打印数独
 void printSudokuPuzzle(int psize, int **grid)
 {
+  for(int row = 1; row <= psize; row++) {
+    for(int column = 1; column <= psize; column++) {
+      printf("%d ", grid[row][column]);
+    }
+    printf("\n");
+  }
 }
 
 //释放数独资源
 void deleteSudokuPuzzle(int psize, int **grid)
 {
+  for(int i = 0; i < psize + 1; i++) {
+    free(grid[i]);
+  }
+  free(grid);
 }
 
 //主函数入口，此函数不要增加其他内容了，无须改动
