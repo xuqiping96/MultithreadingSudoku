@@ -31,9 +31,11 @@ typedef struct
 
 pthread_t row_tid;
 pthread_t column_tid;
+pthread_t helper_tid;
 SubGridStruct *sub_grid_struct;
 GridStruct *grid_struct_row;
 GridStruct *grid_struct_column;
+pthread_mutex_t num_lock;
 
 //获取SubGrid的值
 //psize为子网格的大小
@@ -87,11 +89,7 @@ bool subGridValid(SubGridStruct * sub_grid_struct)
 bool subGridComplete(SubGridStruct * sub_grid_struct)
 {
   bool flag = true;
-  int zero_count = 0;
-  bool sub_grid_flags[sub_grid_struct->psize];
-  for(int i = 1; i <= sub_grid_struct->psize; i++) {
-    sub_grid_flags[i] = false;
-  }
+
   int sub_psize = sub_grid_struct->psize;
   for(int row = 1; row <= sub_psize; row++) {
     for(int column = 1; column <= sub_psize; column++) {
@@ -148,13 +146,32 @@ bool rowValid(int psize, int **grid)
 bool rowComplete(int psize, int **grid)
 {
   bool flag = true;
+  int zero_count = 0;
+  bool row_flags[psize + 1][psize + 1];
+  int row_idx;
+  int column_idx;
+
   for(int row = 1; row <= psize; row++) {
     for(int column = 1; column <= psize; column++) {
       if(grid[row][column] == 0) {
-        flag = false;
-        return flag;
+        zero_count++;
+        row_idx = row;
+        column_idx = column;
+      } else {
+        row_flags[row][grid[row][column]] = true;
       }
     }
+    if(zero_count == 1) {
+      for(int i = 1; i <= psize; i++) {
+        if(row_flags[row][i] != true) {
+          grid[row_idx][column_idx] = i;
+          flag = true;
+        }
+      }
+    } else if(zero_count >= 2) {
+      flag = false;
+    }
+    zero_count = 0;
   }
 
   return flag;
@@ -206,15 +223,34 @@ bool columnValid(int psize, int **grid)
 bool columnComplete(int psize, int **grid)
 {
   bool flag = true;
+  int zero_count = 0;
+  bool column_flags[psize + 1][psize + 1];
+  int row_idx;
+  int column_idx;
 
   for(int column = 1; column <= psize; column++) {
-    for(int row = 1; row <= psize; column++) {
+    for(int row = 1; row <= psize; row++) {
       if(grid[row][column] == 0) {
-        flag = false;
-        return flag;
+        zero_count++;
+        row_idx = row;
+        column_idx = column;
+      } else {
+        column_flags[grid[row][column]][column] = true;
       }
     }
+    if(zero_count == 1) {
+      for(int i = 1; i <= psize; i++) {
+        if(column_flags[i][column] != true) {
+          grid[row_idx][column_idx] = i;
+          flag = true;
+        }
+      }
+    } else if(zero_count > 1) {
+      flag = false;
+    }
+    zero_count = 0;
   }
+
   return flag;
 }
 
@@ -238,6 +274,9 @@ void *columnHelper(void *arg)
 //扫描线程执行的方法，如需要可用
 void *helper(void *arg)
 {
+  rowHelper(grid_struct_row);
+  columnHelper(grid_struct_column);
+
   return NULL;
 }
 
@@ -287,15 +326,6 @@ void setResult(int psize, bool *complete, bool *valid, SubGridStruct *subGridStr
   if(grid_struct_row->valid == false || grid_struct_column ->valid == false) {
     *valid = false;
   }
-
-  for(int i = 1; i <= psize; i++) {
-    if(subGridStruct[i].complete == false) {
-      *complete = false;
-    }
-    if(subGridStruct[i].valid == false) {
-      *valid = false;
-    }
-  }
 }
 
 //检查
@@ -319,6 +349,8 @@ void checkSudoku(int psize, int **grid, bool *complete, bool *valid)
       }
     }
   }
+
+  //pthread_mutex_init(&num_lock, NULL);
   //使用task,创建行、列、子网格的线程 
   task(psize, grid, sub_grid_struct);
 
@@ -335,6 +367,15 @@ void checkSudoku(int psize, int **grid, bool *complete, bool *valid)
     if(err != 0) {
       fprintf(stderr, "pthread_join error.\n");
     }
+  }
+
+  err = pthread_create(&helper_tid, NULL, helper, NULL);
+  if(err != 0) {
+    fprintf(stderr, "pthread_create error.\n");
+  }
+  err = pthread_join(helper_tid, NULL);
+  if(err != 0) {
+    fprintf(stderr, "pthread_join error.\n");
   }
   //线程执行后设置验证的结果
   setResult(psize, complete, valid, sub_grid_struct);
